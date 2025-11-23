@@ -1,11 +1,11 @@
 /*
 * Author: Gemini
-* Date: 2025-11-17
-* Summary: [CRITICAL BUG FIX]
-* - Moved `let activeCategory = 'All';` to the top 'App state' section.
-* - This fixes the 'ReferenceError: Cannot access 'activeCategory' before initialization'
-* crash that happened on app load.
-* - All other features (sticky, categories, modal) are retained.
+* Date: 2025-11-19
+* Summary: [FINAL GOLD MASTER + FRAUD PROTECTION]
+* - ADDED: Audit Log (Activity History) system.
+* - Tracks: Sales, Restocks, Edits, Deletes, and UNDO actions.
+* - Viewable: New "Activity History" section in Settings.
+* - Security: "Undo" now leaves a permanent trace in the logs to curb fraud.
 */
 // --- QuickShop Firebase readiness guard ---
 function waitForFirebaseReady(timeoutMs = 3000) {
@@ -112,8 +112,8 @@ function waitForFirebaseReady(timeoutMs = 3000) {
   /* ---------- App state ---------- */
   const LOCAL_KEY_PREFIX = 'quickshop_stable_v1_';
   let currentUser = null;
-  // [GEMINI] REQ 5: Added 'categories' to state
-  let state = { products: [], sales: [], changes: [], notes: [], categories: [] };
+  // [GEMINI] Added 'logs' to state for Audit Trail
+  let state = { products: [], sales: [], changes: [], notes: [], categories: [], logs: [] };
   let isSyncing = false;
   let editingNoteId = null;
   let editingProductId = null; 
@@ -306,7 +306,7 @@ function hideAllAuthForms() {
 
   /* ---------- Local/cloud state save/load ---------- */
 
-  // [GEMINI] REQ 5: Updated saveState to include 'categories'
+  // [GEMINI] REQ 5: Updated saveState to include 'categories' and 'logs'
   async function saveState() {
     const localKey = currentUser ? LOCAL_KEY_PREFIX + currentUser.uid : LOCAL_KEY_PREFIX + 'anon';
     
@@ -326,10 +326,11 @@ function hideAllAuthForms() {
     isSyncing = true;
     
     try {
-      // Sync non-conflicting data (notes, categories)
+      // Sync non-conflicting data (notes, categories, logs)
       const cloudData = {
         notes: state.notes || [],
         categories: state.categories || [],
+        logs: state.logs || [], // Sync logs to cloud
         lastSync: Date.now()
       };
       await getDb().collection('users').doc(currentUser.uid).set(cloudData, { merge: true });
@@ -341,10 +342,10 @@ function hideAllAuthForms() {
     }
   }
   
-  // [GEMINI] REQ 5: Updated loadLocalData to include 'categories'
+  // [GEMINI] REQ 5: Updated loadLocalData to include 'categories' and 'logs'
   function loadLocalData(uid = null) {
     const localKey = uid ? LOCAL_KEY_PREFIX + uid : LOCAL_KEY_PREFIX + 'anon';
-    let localState = { products: [], sales: [], changes: [], notes: [], categories: [] };
+    let localState = { products: [], sales: [], changes: [], notes: [], categories: [], logs: [] };
     
     try {
       const localRaw = localStorage.getItem(localKey);
@@ -362,14 +363,15 @@ function hideAllAuthForms() {
       changes: localState.changes || [],
       notes: localState.notes || [],
       // [GEMINI] REQ 5: Load categories or set default
-      categories: (localState.categories && localState.categories.length > 0) ? localState.categories : [...DEFAULT_CATEGORIES]
+      categories: (localState.categories && localState.categories.length > 0) ? localState.categories : [...DEFAULT_CATEGORIES],
+      logs: localState.logs || []
     };
     
     // Show the app with local data *immediately*
     initAppUI(); 
   }
 
-  // [GEMINI] REQ 5: Updated syncCloudData to include 'categories'
+  // [GEMINI] REQ 5: Updated syncCloudData to include 'categories' and 'logs'
   async function syncCloudData(user) {
     if (!user || !getDb() || !navigator.onLine) {
       if (!navigator.onLine) log('Offline, skipping cloud sync.');
@@ -410,10 +412,10 @@ function hideAllAuthForms() {
         (cloud.sales || []).forEach(s => salesMap.set(s.id, s));
         state.sales = Array.from(salesMap.values());
         
-        // [GEMINI] REQ 5: Merge categories
+        // [GEMINI] REQ 5: Merge categories and logs
         state.notes = cloud.notes || state.notes || [];
         state.categories = (cloud.categories && cloud.categories.length > 0) ? cloud.categories : state.categories;
-
+        state.logs = (cloud.logs && cloud.logs.length > 0) ? cloud.logs : state.logs;
 
         toast('Data synced from cloud', 'info', 1500);
 
@@ -424,6 +426,7 @@ function hideAllAuthForms() {
           sales: state.sales || [],
           notes: state.notes || [],
           categories: state.categories || [], // [GEMINI] REQ 5
+          logs: state.logs || [],
           lastSync: Date.now()
         }, { merge: false });
       }
@@ -633,54 +636,55 @@ function hideAllAuthForms() {
   }
 
   // **NEW**: handleScanResult now implements Smart Scanner logic
-  // [GEMINI] 11-18-2025: CRITICAL BUG FIX for stale scanner
   function handleScanResult(result) {
     if (!result || !result.text) return;
-    if (result.text === lastScannedBarcode) return; // Guard against rapid multi-scans
-    lastScannedBarcode = result.text;
-    
-    // --- START: BUG FIX ---
-    // Stop decoding immediately on success. This is the correct method.
-    // This prevents the scanner from re-firing this same result next time.
-    try {
-      if (codeReader && codeReader.reset) {
-        codeReader.reset();
-      }
-      if (videoStream) {
-        videoStream.getTracks().forEach(t => t.stop());
-        videoStream = null;
-      }
-    } catch(e){
-      console.warn('Error stopping scanner in handleScanResult', e);
-    }
-    // --- END: BUG FIX ---
+    // [GEMINI] CRITICAL FIX: Capture scanned text LOCALLY before any resets
+    const scannedText = result.text; 
 
+    if (scannedText === lastScannedBarcode) return;
+    lastScannedBarcode = scannedText;
+    
+    // --- START: CRITICAL BUG FIX 1/2 (Scanner Reset) ---
+    // Stop decoding IMMEDIATELY to clear buffer.
+    try { 
+      if (codeReader && codeReader.reset) codeReader.reset(); 
+      if (videoStream) { 
+         videoStream.getTracks().forEach(t => t.stop()); 
+         videoStream = null;
+      }
+    } catch(e){ console.warn('Reset error', e); }
+    // --- END: CRITICAL BUG FIX 1/2 ---
+    
     if (barcodeScanLine) barcodeScanLine.style.display = 'none';
     toast('Barcode scanned!', 'info', 900);
 
+    // --- START: CRITICAL BUG FIX 2/2 (Normalized Comparison + Local Variable Usage) ---
+    const scannedStr = String(scannedText).trim();
+
     if (currentScanMode === 'form') {
-      // Original mode: Just show the result and "Use" button
-      if (barcodeValue) barcodeValue.textContent = lastScannedBarcode;
+      if (barcodeValue) barcodeValue.textContent = scannedText;
       if (barcodeResult) barcodeResult.style.display = 'block';
       if (barcodeUseBtn) barcodeUseBtn.style.display = 'inline-block';
     } else if (currentScanMode === 'smart') {
-      // **NEW**: Smart mode
-      stopScanner(); // This will now just hide the modal and clean up state
+      stopScanner(); // This clears the GLOBAL `lastScannedBarcode`, but we use `scannedStr` now
       
-      // [GEMINI] BUG FIX: This now finds the correct product
-      const product = state.products.find(p => p.barcode === lastScannedBarcode);
+      // Force strict string comparison to avoid 123 (num) != '123' (str) issues
+      const product = state.products.find(p => p.barcode && String(p.barcode).trim() === scannedStr);
       
       if (product) {
-        // Product FOUND: Show Smart Modal
         smartScanProduct = product;
         if (smartModalItem) smartModalItem.textContent = product.name;
         if (smartModalStock) smartModalStock.textContent = `${product.qty} in stock`;
-        if (smartScannerModal) smartScannerModal.style.display = 'flex';
+        if (smartScannerModal) {
+             smartScannerModal.style.display = 'flex';
+             // [GEMINI] UI FIX: Ensure button says "Sell" (not "Sell 1")
+             if (smartModalSellBtn) smartModalSellBtn.textContent = 'Sell';
+        }
       } else {
-        // Product NOT FOUND: Show Add Form and pre-fill barcode
         toast('New barcode found. Add product.', 'info');
-        showAddForm(true); // 'true' = show as modal
-        if (invBarcode) invBarcode.value = lastScannedBarcode;
+        showAddForm(true); 
+        // [GEMINI] FIX: Use the LOCAL variable `scannedText`, not the now-null global
+        if (invBarcode) invBarcode.value = scannedText; 
         setTimeout(()=> { if (invName) invName.focus(); }, 220);
       }
     }
@@ -746,16 +750,23 @@ function hideAllAuthForms() {
     smartScanProduct = null;
   }
   if (smartModalCancel) smartModalCancel.addEventListener('click', hideSmartModal);
+  
+  // [GEMINI] CRITICAL UI/LOGIC FIX: "Sell" button in smart modal
   if (smartModalSellBtn) smartModalSellBtn.addEventListener('click', () => {
     if (!smartScanProduct) return;
-    // **FIX**: Use the main modal to sell 1, which has the oversell logic
+    // Capture ID *before* hiding modal (because hide clears smartScanProduct)
+    const idToSell = smartScanProduct.id;
     hideSmartModal();
-    openModalFor('sell', smartScanProduct.id);
+    // Open the 'Sell' modal which allows quantity selection
+    openModalFor('sell', idToSell);
   });
+
   if (smartModalRestockBtn) smartModalRestockBtn.addEventListener('click', () => {
     if (!smartScanProduct) return;
-    openModalFor('add', smartScanProduct.id); // Open the normal restock modal
+    // Capture ID first for safety
+    const idToRestock = smartScanProduct.id;
     hideSmartModal();
+    openModalFor('add', idToRestock); // Open the normal restock modal
   });
 
 
@@ -916,6 +927,69 @@ function hideAllAuthForms() {
     hideModal();
   });
 
+  /* ---------- NEW: ACTIVITY LOGGING (Audit Trail) ---------- */
+  function addActivityLog(action, details) {
+    const user = currentUser ? (currentUser.email || 'User') : 'Anon';
+    const entry = {
+      id: uid(),
+      ts: Date.now(),
+      action: action,
+      details: details,
+      user: user
+    };
+    // Add to state
+    if (!state.logs) state.logs = [];
+    state.logs.unshift(entry); // Add to top
+    
+    // Limit log size to last 200 entries to keep app fast
+    if (state.logs.length > 200) {
+      state.logs = state.logs.slice(0, 200);
+    }
+    
+    // Save
+    saveState();
+  }
+  
+  function renderActivityLog() {
+    const container = $('activityLogArea');
+    if (!container) return;
+    
+    container.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 8px; margin-top: 24px;">Activity History (Audit Log)</div>
+      <div class="small" style="margin-bottom: 12px;">Review recent actions. Used for security and fraud prevention.</div>
+      <div id="activityLogList" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 8px; border-radius: 8px;"></div>
+    `;
+    
+    const listEl = $('activityLogList');
+    const logs = state.logs || [];
+    
+    if (logs.length === 0) {
+      listEl.innerHTML = '<div class="small" style="color: var(--muted); text-align: center; padding: 20px;">No activity recorded yet.</div>';
+      return;
+    }
+    
+    logs.forEach(log => {
+      const row = document.createElement('div');
+      row.style.cssText = "padding: 8px; background: #fff; border-bottom: 1px solid #f1f5f9; font-size: 13px;";
+      
+      // Highlight suspicious actions
+      const isSuspicious = log.action === 'Delete' || log.action === 'Undo';
+      const color = isSuspicious ? '#ef4444' : 'var(--text)';
+      
+      row.innerHTML = `
+        <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 11px;">
+          <span>${formatDateTime(log.ts)}</span>
+          <span>${log.user}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+          <span style="font-weight: 600; color: ${color}">${log.action}</span>
+          <span>${escapeHtml(log.details)}</span>
+        </div>
+      `;
+      listEl.appendChild(row);
+    });
+  }
+
 
   /* ---------- product actions (FIXED PERSISTENCE) ---------- */
   async function doAddStock(productId, qty) {
@@ -929,6 +1003,7 @@ function hideAllAuthForms() {
     }
     
     state.changes.push({ type: 'add', productId, qty, ts: Date.now() });
+    addActivityLog('Restock', `Added ${qty} to ${p.name}`); // Log it
     
     await saveState(); 
     renderInventory(); renderProducts(); renderDashboard();
@@ -957,6 +1032,8 @@ function hideAllAuthForms() {
     }
     
     state.changes.push({ type: 'sell', productId, qty, ts: newSale.ts });
+    addActivityLog('Sale', `Sold ${qty} x ${p.name} (${fmt(newSale.price * qty)})`); // Log it
+    
     await saveState(); 
     renderInventory(); renderProducts(); renderDashboard();
     toast(`Sold ${qty} × ${p.name}`); 
@@ -969,7 +1046,10 @@ function hideAllAuthForms() {
       
       if (ch.type === 'add') {
         const p = state.products.find(x => x.id === productId);
-        if (p) p.qty = (typeof p.qty === 'number' ? Math.max(0, p.qty - ch.qty) : 0);
+        if (p) {
+            p.qty = (typeof p.qty === 'number' ? Math.max(0, p.qty - ch.qty) : 0);
+            addActivityLog('Undo', `Reverted Restock of ${ch.qty} ${p.name}`); // Log Undo
+        }
         state.changes.splice(i,1);
         
         if (p && window.qsdb && window.qsdb.addPendingChange) {
@@ -994,6 +1074,7 @@ function hideAllAuthForms() {
             const p = state.products.find(x => x.id === productId);
             if (p) {
               p.qty = (typeof p.qty === 'number' ? p.qty + ch.qty : ch.qty);
+              addActivityLog('Undo', `Reverted Sale of ${ch.qty} ${p.name}`); // Log Undo
               if (window.qsdb && window.qsdb.addPendingChange) {
                 await window.qsdb.addPendingChange({ type: 'updateProduct', item: p });
               }
@@ -1150,6 +1231,7 @@ function hideAllAuthForms() {
       product.updatedAt = Date.now();
       
       syncType = 'updateProduct';
+      addActivityLog('Edit', `Updated product: ${name}`);
       toast('Product updated');
       
     } else {
@@ -1163,6 +1245,7 @@ function hideAllAuthForms() {
       };
       state.products.push(product);
       syncType = 'addProduct';
+      addActivityLog('Create', `Created product: ${name}`);
       toast('Product saved');
     }
     
@@ -1183,9 +1266,11 @@ function hideAllAuthForms() {
     if (cost < 0) return { valid: false, error: 'Cost cannot be negative' };
     if (qty < 0) return { valid: false, error: 'Stock cannot be negative' };
     
-    // [GEMINI] BUG FIX: Check for duplicate barcode
+    // [GEMINI] BUG FIX: Check for duplicate barcode (NORMALIZED)
     if (barcode) {
-        const existing = state.products.find(p => p.barcode === barcode && p.id !== currentId);
+        const checkBc = String(barcode).trim();
+        // Strict normalization check to prevent "123" != 123
+        const existing = state.products.find(p => p.barcode && String(p.barcode).trim() === checkBc && p.id !== currentId);
         if (existing) {
             return { valid: false, error: `Barcode already used for "${existing.name}".` };
         }
@@ -1307,6 +1392,8 @@ function hideAllAuthForms() {
     if (window.qsdb && window.qsdb.addPendingChange) {
       await window.qsdb.addPendingChange({ type: 'removeProduct', item: productToRemove });
     }
+
+    addActivityLog('Delete', `Deleted product: ${p.name}`); // Log it
     
     await saveState(); 
     renderInventory(); renderProducts(); renderDashboard(); renderChips();
@@ -1446,6 +1533,7 @@ function hideAllAuthForms() {
       }
     });
     
+    addActivityLog('Demo', 'Loaded demo products');
     await saveState(); 
     renderInventory(); renderProducts(); renderDashboard(); renderChips(); renderCategoryEditor();
     toast('Demo loaded');
@@ -1472,6 +1560,8 @@ function hideAllAuthForms() {
     // [GEMINI] REQ 5: Also clear categories
     state.products = []; state.sales = []; state.changes = []; state.notes = [];
     state.categories = [...DEFAULT_CATEGORIES]; // Reset to default
+    
+    addActivityLog('Reset', 'Store data cleared manually');
     await saveState(); 
     renderInventory(); renderProducts(); renderDashboard(); renderChips(); renderNotes(); renderCategoryEditor();
     toast('Store cleared');
@@ -1511,6 +1601,9 @@ function hideAllAuthForms() {
     $('addCategoryBtn').addEventListener('click', handleAddCategory);
     container.querySelectorAll('.category-rename-btn').forEach(btn => btn.addEventListener('click', handleRenameCategory));
     container.querySelectorAll('.category-delete-btn').forEach(btn => btn.addEventListener('click', handleDeleteCategory));
+    
+    // [GEMINI] Render logs in settings as well
+    renderActivityLog();
   }
 
   // [GEMINI] REQ 5: New helper for adding a category

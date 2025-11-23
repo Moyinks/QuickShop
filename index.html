@@ -7,7 +7,6 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2c2c3c">
 
-  <!-- [GEMINI] FIX: Replaced placeholder icons with your PWA files -->
   <link rel="apple-touch-icon" href="pwa-192.png">
   <link rel="icon" type="image/png" sizes="192x192" href="pwa-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="pwa-512.png">
@@ -16,7 +15,8 @@
   <meta name="apple-mobile-web-app-title" content="QuickShop">
 
   <title>QuickShop — Inventory + Sales (Notes)</title>
-  <link rel="stylesheet" href="style.css"> <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+  <link rel="stylesheet" href="style.css"> 
+  <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -194,13 +194,13 @@
 
       <div id="reportSummary" style="margin-top:12px"></div>
       <div id="reportBreakdown" style="margin-top:12px"></div>
-  <div id="reportChartCard" style="margin-top:12px">
-    <div style="background:var(--card-bg);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);background:transparent;padding:12px;border-radius:12px">
-      <div style="font-weight:700;margin-bottom:8px;color:var(--muted)">Daily Sales Overview</div>
-      <div style="height:220px;min-height:160px"><canvas id="reportChart" style="width:100%;height:100%"></canvas></div>
-      <div id="reportChartUpdated" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
-    </div>
-  </div>
+      <div id="reportChartCard" style="margin-top:12px">
+        <div style="background:var(--card-bg);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);background:transparent;padding:12px;border-radius:12px">
+          <div style="font-weight:700;margin-bottom:8px;color:var(--muted)">Daily Sales Overview</div>
+          <div style="height:220px;min-height:160px"><canvas id="reportChart" style="width:100%;height:100%"></canvas></div>
+          <div id="reportChartUpdated" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+        </div>
+      </div>
     </div>
 
     <div id="notesPanel" class="panel">
@@ -248,15 +248,36 @@
       </div>
 
       <div style="background:var(--card-bg);padding:12px;border-radius:12px;border:1px solid rgba(7,18,43,0.04);margin-bottom:12px">
-        <div id="categoryEditorArea">
-          </div>
+        <div id="categoryEditorArea"></div>
+      </div>
+      
+      <div style="background:var(--card-bg);padding:12px;border-radius:12px;border:1px solid rgba(7,18,43,0.04);margin-bottom:12px">
+        <div id="activityLogArea"></div>
       </div>
 
       <div style="background:var(--card-bg);padding:12px;border-radius:12px;border:1px solid rgba(7,18,43,0.04)">
         <div style="font-weight:700">About</div>
         <div class="small" style="margin-top:6px">QuickShop — offline-first inventory & sales with notes.</div>
       </div>
+      <div style="height: 100px;"></div>
     </div>
+  </div>
+
+  <div id="fullAuditLogModal" class="full-screen-modal" style="display:none;">
+    <div class="full-screen-header">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="closeAuditModalBtn" class="btn-undo" style="border:0; padding:0; font-size:24px;">←</button>
+        <h2 style="color: var(--text-dark); margin:0;">Audit Report</h2>
+      </div>
+      <button id="exportAuditLogBtn" class="save-btn" style="background: var(--accent-2);">📥 Download CSV</button>
+    </div>
+    
+    <div class="small" style="padding: 0 16px 12px 16px; color: var(--muted); margin-top: 12px;">
+      Full history of store actions. Download this file to open in Excel.
+    </div>
+
+    <div id="fullAuditLogList" class="full-log-list">
+      </div>
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
@@ -435,5 +456,3 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 </body>
 </html>
-
-

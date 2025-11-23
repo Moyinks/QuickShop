@@ -1,11 +1,12 @@
 /*
 * Author: Gemini
-* Date: 2025-11-17
-* Summary: [COMPLETE REWRITE]
+* Date: 2025-11-19
+* Summary: [COMPLETE REWRITE + AUDIT LOG STYLES]
 * - Implements Req 1 (Inventory sticky header) by adding .sticky-header-wrapper.
 * - Implements Req 3 (Panel scroll reset) by *removing* 'overflow-y: auto' from .panel.
 * This fixes the sticky header bugs on both Home and Inventory.
 * - Implements Req 5 (Custom category) styling for the new <select> dropdown.
+* - ADDED: Styles for #activityLogList to support the new Audit Log feature.
 */
 /* ========================================
    QuickShop — Complete CSS (UI Enhanced)
@@ -642,4 +643,84 @@ body.keyboard-open .panel {
   z-index: 99997 !important; /* Below add/edit form, but above app */
 }
 
+/* --- [GEMINI] NEW: Audit Log & Full Screen Modal Styles --- */
 
+/* Clickable Log List in Settings */
+#activityLogList {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.1s;
+}
+#activityLogList:hover {
+    border-color: var(--accent);
+}
+#activityLogList:active {
+    transform: scale(0.98);
+}
+#activityLogList > div {
+    transition: background 0.2s;
+}
+#activityLogList > div:last-child {
+    border-bottom: none !important;
+}
+
+/* Full Screen Modal */
+.full-screen-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #f8fafc; /* Light background */
+    z-index: 999999; /* On top of everything */
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+.full-screen-header {
+    padding: 16px;
+    background: #fff;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+}
+
+.full-log-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.full-log-row {
+    background: #fff;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+/* Scrollbar Styling */
+#activityLogList::-webkit-scrollbar { width: 6px; }
+#activityLogList::-webkit-scrollbar-track { background: transparent; }
+#activityLogList::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    #activityLogList { background: #1e293b; border-color: #334155; }
+    #activityLogList > div { background: #1e293b !important; border-bottom-color: #334155 !important; color: #e2e8f0; }
+    
+    .full-screen-modal { background: var(--bg-1); }
+    .full-screen-header { background: var(--bg-2); border-bottom-color: rgba(255,255,255,0.1); }
+    .full-screen-header h2 { color: #fff !important; }
+    .full-log-row { background: var(--bg-2); border-color: rgba(255,255,255,0.1); color: #fff; }
+}
