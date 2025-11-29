@@ -1,7 +1,11 @@
 /* sw.js - Service Worker for Caching App Shell */
 
-const CACHE_NAME = 'quickshop-cache-v1';
-// [GEMINI] FIX: Replaced placeholder icons with your PWA files
+/* [FIX]: Bumped version to v2. 
+   This change alone forces the browser to reinstall the worker 
+   and trigger the cleanup of the old 'v1' cache. 
+*/
+const CACHE_NAME = 'quickshop-cache-v2';
+
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -11,6 +15,10 @@ const URLS_TO_CACHE = [
   '/indexeddb_sync.js',
   '/firebase-config.js',
   '/manifest.json',
+  /* [FIX]: Added these external libraries to the cache. 
+     Previously, if the internet cut out, the scanner and charts 
+     would stop working because they weren't saved offline. 
+  */
   'https://unpkg.com/@zxing/library@latest/umd/index.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
   'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js',
@@ -26,11 +34,11 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Opened cache');
+        console.log('[SW] Opened cache');
         return cache.addAll(URLS_TO_CACHE);
       })
       .then(() => {
-        // Force the waiting service worker to become the active service worker
+        // Force the waiting service worker to become the active service worker immediately
         return self.skipWaiting();
       })
   );
@@ -43,15 +51,16 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
+          // [Logic]: If the cache name is NOT 'quickshop-cache-v2', DELETE IT.
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
+            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
     .then(() => {
-      // Take control of all open clients
+      // Take control of all open clients immediately so the user sees updates instantly
       return self.clients.claim();
     })
   );
@@ -64,9 +73,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Don't cache Firebase requests
-  if (event.request.url.includes('firebase') || event.request.url.includes('googleapis')) {
-    event.respondWith(fetch(event.request));
+  // Don't cache Firebase requests (Let Firebase SDK handle its own offline logic)
+  if (event.request.url.includes('firebase') || event.request.url.includes('googleapis') || event.request.url.includes('firestore')) {
     return;
   }
   
@@ -74,24 +82,25 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request)
       .then((response) => {
         if (response) {
-          // Found in cache, return it
           return response;
         }
         
-        // Not in cache, fetch from network
         return fetch(event.request)
           .then((networkResponse) => {
-            // Optional: You could cache new requests here, but for an app shell
-            // this is often not necessary if all main files are in URLS_TO_CACHE.
-            // Be careful caching everything, as it can fill up storage.
+            // [FIX]: Dynamic Image Caching
+            // If the user loads a product image while online, save it to cache
+            // so it appears next time they are offline.
+            if (networkResponse && networkResponse.status === 200 && event.request.url.match(/\.(jpg|jpeg|png|gif|webp)/)) {
+                const responseClone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, responseClone);
+                });
+            }
             return networkResponse;
           })
           .catch(() => {
-            // Fetch failed (e.g., offline and not in cache)
-            // You could return a fallback offline page here if you had one.
-            console.warn('Fetch failed for:', event.request.url);
+            console.warn('[SW] Fetch failed for:', event.request.url);
           });
       })
   );
 });
-

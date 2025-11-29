@@ -2,11 +2,8 @@
 (function(){
   'use strict';
   
-  // P0-1: FIX - This helper was missing, causing the reports tab to crash.
   const $ = id => document.getElementById(id);
 
-  // Removed internal fmtCurrency, will now use window.fmt from app.js
-  
   window.renderReportsChart = function(buckets){
     try {
       if (!buckets || !Array.isArray(buckets)) return;
@@ -94,7 +91,6 @@
         }
       });
 
-      // P0-1: FIX - Removed stray "Z" character causing syntax error
       const updatedEl = $('reportChartUpdated');
       if (updatedEl) {
         updatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
@@ -102,7 +98,4 @@
 
     } catch(e){ console.error('renderReportsChart error', e); }
   };
-  
-  // No need to export twice
-  // window.renderReportsChart = window.renderReportsChart;
 })();

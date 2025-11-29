@@ -1,12 +1,11 @@
 /*
-* Author: Gemini
-* Date: 2025-11-19
-* Summary: [FINAL GOLD MASTER + FRAUD PROTECTION]
-* - ADDED: Audit Log (Activity History) system.
-* - Tracks: Sales, Restocks, Edits, Deletes, and UNDO actions.
-* - Viewable: New "Activity History" section in Settings.
-* - Security: "Undo" now leaves a permanent trace in the logs to curb fraud.
+* Author: Gemini (Final Fix - Removed Duplicate Variable)
+* Date: 2025-11-29
+* Summary: [FINAL GOLD MASTER]
+* - FIXED: SyntaxError (removed duplicate 'headerSearchInput' declaration).
+* - INCLUDES: All features (Search, Keyboard, Offline, Images, Scanner, Audit Log).
 */
+
 // --- QuickShop Firebase readiness guard ---
 function waitForFirebaseReady(timeoutMs = 3000) {
   return new Promise((resolve) => {
@@ -102,6 +101,45 @@ function waitForFirebaseReady(timeoutMs = 3000) {
     } catch (e) { console.log('toast failed', e); }
   }
 
+  /* ---------- [FIX] Image Compression Engine ---------- */
+  function compressImage(file, maxWidth = 1024, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > maxWidth) {
+            height = Math.round(height * (maxWidth / width));
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to blob (JPEG)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Compression failed'));
+            }
+          }, 'image/jpeg', quality);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  }
+
 
   /* ---------- Firebase compat references (safe) ---------- */
   const getFirebase = () => window.__QS_FIREBASE || {};
@@ -149,9 +187,11 @@ function waitForFirebaseReady(timeoutMs = 3000) {
 
   const userEmailEl = $('userEmail'), userDisplayNameEl = $('userDisplayName');
 
-  // app elements
-  const searchContainer = document.querySelector('.search');
-  const searchInput = $('searchInput'), chipsEl = $('chips'), productListEl = $('productList'), inventoryListEl = $('inventoryList');
+  // [NEW] Global Header Search Input
+  const headerSearchInput = $('headerSearchInput');
+  // const searchInput = $('searchInput'); // REMOVED to avoid confusion
+  const chipsEl = $('chips'), productListEl = $('productList'), inventoryListEl = $('inventoryList');
+  const searchContainer = document.querySelector('.search'); // Legacy
 
   // Add/Edit Form refs
   // [GEMINI] REQ 5: invCategory is now a <select>
@@ -180,6 +220,26 @@ function waitForFirebaseReady(timeoutMs = 3000) {
 
   // navigation / misc
   const navButtons = Array.from(document.querySelectorAll('.nav-btn')), btnSettings = $('btnSettings');
+
+  /* ---------- [NEW] Keyboard Focus Handling ---------- */
+  // When an input is focused, add 'keyboard-open' to body. This hides bottom-nav via CSS.
+  try {
+    document.addEventListener('focusin', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        document.body.classList.add('keyboard-open');
+      }
+    });
+    
+    document.addEventListener('focusout', (e) => {
+      // Small delay to check if focus moved to another input
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA' && active.tagName !== 'SELECT')) {
+          document.body.classList.remove('keyboard-open');
+        }
+      }, 50);
+    });
+  } catch(e) { console.warn('Keyboard listeners failed', e); }
 
   /* ---------- [GEMINI] REQ 4: Custom Confirmation Modal Logic ---------- */
   let confirmResolve = null;
@@ -212,11 +272,6 @@ function waitForFirebaseReady(timeoutMs = 3000) {
     });
   }
   
-  /**
-   * Shows a custom confirmation modal.
-   * @param {object} options - { title, message, okText, okDanger }
-   * @returns {Promise<boolean>} - Resolves true if OK, false if Cancel.
-   */
   function showConfirm({ title = 'Are you sure?', message, okText = 'OK', okDanger = false }) {
     return new Promise((resolve) => {
       if (!confirmModal.backdrop || !confirmModal.title || !confirmModal.message || !confirmModal.okBtn) {
@@ -254,11 +309,11 @@ function hideAllAuthForms() {
     if (verificationNotice) verificationNotice.style.display = 'none';
     if (authLoading) authLoading.style.display = 'none';
   }
-  function showLoginForm(){ hideAllAuthForms(); if (loginForm) loginForm.style.display = 'flex'; clearAuthInputs(); setBottomNavVisible(false); }
-  function showSignupForm(){ hideAllAuthForms(); if (signupForm) signupForm.style.display = 'flex'; clearAuthInputs(); setBottomNavVisible(false); }
-  function showResetForm(){ hideAllAuthForms(); if (resetForm) resetForm.style.display = 'flex'; clearAuthInputs(); setBottomNavVisible(false); }
+  function showLoginForm(){ hideAllAuthForms(); if (loginForm) loginForm.style.display = 'flex'; clearAuthInputs(); }
+  function showSignupForm(){ hideAllAuthForms(); if (signupForm) signupForm.style.display = 'flex'; clearAuthInputs(); }
+  function showResetForm(){ hideAllAuthForms(); if (resetForm) resetForm.style.display = 'flex'; clearAuthInputs(); }
   function showVerificationNotice(email) { hideAllAuthForms(); if (verificationNotice) verificationNotice.style.display = 'flex'; const v = $('verificationEmail'); if (v) v.textContent = email || (getAuth() && getAuth().currentUser && getAuth().currentUser.email) || ''; }
-  function showAuthLoading(){ hideAllAuthForms(); if (authLoading) authLoading.style.display = 'flex'; setBottomNavVisible(false); }
+  function showAuthLoading(){ hideAllAuthForms(); if (authLoading) authLoading.style.display = 'flex'; }
   function clearAuthInputs() {
     [loginEmail, loginPass, signupName, signupBusiness, signupEmail, signupPass, signupPassConfirm, resetEmail].forEach(i => { if (i) { i.value = ''; i.classList.remove('error'); }});
   }
@@ -470,6 +525,11 @@ function hideAllAuthForms() {
         toast('Please verify your email before logging in', 'error');
         return;
       }
+      
+      // [FIX] Set Session Flag
+      localStorage.setItem('qs_session_active', 'true');
+      document.body.classList.add('mode-app');
+      
       toast('Login successful');
     } catch (e) {
       errlog('login error', e);
@@ -567,13 +627,27 @@ function hideAllAuthForms() {
     });
     if (!confirmed) return;
 
-    try { const auth = getAuth(); if (auth) await auth.signOut(); toast('Signed out'); } catch (e) { errlog('signout error', e); toast('Sign out failed: ' + (e.message || ''), 'error'); }
+    try { 
+        const auth = getAuth(); if (auth) await auth.signOut(); 
+        
+        // [FIX] Clear session flag
+        localStorage.removeItem('qs_session_active');
+        document.body.classList.remove('mode-app');
+        
+        toast('Signed out'); 
+        window.location.reload(); // Clean reset
+    } catch (e) { errlog('signout error', e); toast('Sign out failed: ' + (e.message || ''), 'error'); }
   });
 
   /* ---------- Auth observer ---------- */
   
   // 1. Load local data immediately on script load
   loadLocalData(null); // Load anon data first
+  
+  // [FIX] Check flag immediately
+  if (localStorage.getItem('qs_session_active') === 'true') {
+      document.body.classList.add('mode-app');
+  }
 
   // 2. Setup auth observer
   const authInstance = getAuth();
@@ -583,14 +657,21 @@ function hideAllAuthForms() {
         currentUser = user;
         
         if (!user.emailVerified) {
+          // [FIX] Revert if not verified
+          localStorage.removeItem('qs_session_active');
+          document.body.classList.remove('mode-app');
+          
           if (loginScreen) loginScreen.style.display = 'flex';
           if (appScreen) appScreen.style.display = 'none';
           showVerificationNotice(user.email);
           return;
         }
 
+        // [FIX] Set visual state
+        localStorage.setItem('qs_session_active', 'true');
+        document.body.classList.add('mode-app');
+        
         if (loginScreen) loginScreen.style.display = 'none';
-        if (appScreen) appScreen.style.display = 'block';
         try{ setBottomNavVisible(true); }catch(e){};
         
         if (userEmailEl) userEmailEl.textContent = user.email || '—';
@@ -604,6 +685,11 @@ function hideAllAuthForms() {
 
       } else {
         currentUser = null;
+        
+        // [FIX] Clear visual state
+        localStorage.removeItem('qs_session_active');
+        document.body.classList.remove('mode-app');
+        
         if (loginScreen) loginScreen.style.display = 'flex'; 
         if (appScreen) appScreen.style.display = 'none'; 
         showLoginForm(); 
@@ -644,6 +730,9 @@ function hideAllAuthForms() {
     if (scannedText === lastScannedBarcode) return;
     lastScannedBarcode = scannedText;
     
+    // Feedback
+    if(navigator.vibrate) navigator.vibrate(200);
+    
     // --- START: CRITICAL BUG FIX 1/2 (Scanner Reset) ---
     // Stop decoding IMMEDIATELY to clear buffer.
     try { 
@@ -662,9 +751,13 @@ function hideAllAuthForms() {
     const scannedStr = String(scannedText).trim();
 
     if (currentScanMode === 'form') {
-      if (barcodeValue) barcodeValue.textContent = scannedText;
-      if (barcodeResult) barcodeResult.style.display = 'block';
-      if (barcodeUseBtn) barcodeUseBtn.style.display = 'inline-block';
+      // [FIX #4] Populate input logic
+      if (invBarcode) {
+          invBarcode.value = scannedStr;
+          invBarcode.focus();
+      }
+      stopScanner(); // Close modal immediately
+      
     } else if (currentScanMode === 'smart') {
       stopScanner(); // This clears the GLOBAL `lastScannedBarcode`, but we use `scannedStr` now
       
@@ -705,16 +798,31 @@ function hideAllAuthForms() {
       if (barcodeUseBtn) barcodeUseBtn.style.display = 'none';
       if (barcodeScanLine) barcodeScanLine.style.display = 'block';
       scannerActive = true;
-      codeReader = new ZXing.BrowserMultiFormatReader();
+      
+      // [FIX #3]: Prioritize 1D Barcodes for Speed
+      const hints = new Map();
+      const formats = [
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E
+      ];
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      
+      codeReader = new ZXing.BrowserMultiFormatReader(hints);
+      
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       videoStream = stream;
       if (barcodeVideo) { barcodeVideo.srcObject = stream; barcodeVideo.play().catch(()=>{}); }
       
+      // Robust decoding method
       if (codeReader.decodeFromVideoDevice) {
         try {
           codeReader.decodeFromVideoDevice(null, barcodeVideo, (result, err) => {
             if (result) handleScanResult(result);
-            if (err && err.name && err.name !== 'NotFoundException') console.warn('ZXing err', err);
+            // if (err && err.name && err.name !== 'NotFoundException') console.warn('ZXing err', err);
           });
         } catch (e) {
           try { if (codeReader.decodeContinuously) codeReader.decodeContinuously(barcodeVideo, (res, er) => { if (res) handleScanResult(res); }); } catch (ex) { throw ex; }
@@ -790,12 +898,24 @@ function hideAllAuthForms() {
 
   let searchTimer = null;
   function scheduleRenderProducts() { clearTimeout(searchTimer); searchTimer = setTimeout(renderProducts, 120); }
-  if (searchInput) searchInput.addEventListener('input', scheduleRenderProducts);
+  
+  // [FIX] Header Search Listener
+  if (headerSearchInput) {
+      headerSearchInput.addEventListener('input', () => {
+          const view = document.querySelector('.panel.active').id;
+          if (view === 'inventoryPanel') {
+              renderInventory();
+          } else {
+              scheduleRenderProducts();
+          }
+      });
+  }
 
   function renderProducts() {
     if (!productListEl) return;
     productListEl.innerHTML = '';
-    const q = (searchInput && (searchInput.value || '').trim().toLowerCase()) || '';
+    // [FIX] Use global header search value
+    const q = (headerSearchInput && headerSearchInput.value.trim().toLowerCase()) || '';
     const items = (state.products || []).filter(p => {
       if (activeCategory !== 'All' && (p.category || 'Others') !== activeCategory) return false;
       if (q && !(((p.name || '').toLowerCase().includes(q)) || ((p.barcode || '') + '').includes(q))) return false;
@@ -1114,11 +1234,14 @@ function hideAllAuthForms() {
         return;
       }
       
-      const fileRef = storage.ref(`user_images/${currentUser.uid}/${Date.now()}_${file.name}`);
-      showLoading(true, 'Uploading image...');
+      showLoading(true, 'Compressing & Uploading...');
       
       try {
-        const snapshot = await fileRef.put(file);
+        // [FIX] Client-Side Compression
+        const compressedBlob = await compressImage(file);
+
+        const fileRef = storage.ref(`user_images/${currentUser.uid}/${Date.now()}.jpg`);
+        const snapshot = await fileRef.put(compressedBlob);
         const downloadURL = await snapshot.ref.getDownloadURL();
         
         showLoading(false);
@@ -1128,7 +1251,7 @@ function hideAllAuthForms() {
         
       } catch (err) {
         errlog('Image upload failed', err);
-        toast('Image upload failed', 'error');
+        toast('Image upload failed: ' + err.message, 'error');
         showLoading(false);
         clearInvImage();
       }
@@ -1282,7 +1405,8 @@ function hideAllAuthForms() {
     if (!inventoryListEl) return;
     inventoryListEl.innerHTML = '';
     
-    const q = (searchInput && (searchInput.value || '').trim().toLowerCase()) || '';
+    // [FIX] Use Global Search Input
+    const q = (headerSearchInput && headerSearchInput.value.trim().toLowerCase()) || '';
     const items = (state.products || []).filter(p => {
       if (q && !(((p.name || '').toLowerCase().includes(q)) || ((p.barcode || '') + '').includes(q))) return false;
       return true;
@@ -1328,14 +1452,17 @@ function hideAllAuthForms() {
     });
   }
 
-  if (searchInput) searchInput.addEventListener('input', function() {
-    const currentView = document.querySelector('.panel.active')?.id;
-    if (currentView === 'inventoryPanel') {
-      renderInventory();
-    } else if (currentView === 'homePanel') {
-      scheduleRenderProducts();
-    }
-  });
+  // [FIX] Search Listener Wiring
+  if (headerSearchInput) {
+      headerSearchInput.addEventListener('input', function() {
+        const currentView = document.querySelector('.panel.active')?.id;
+        if (currentView === 'inventoryPanel') {
+          renderInventory();
+        } else if (currentView === 'homePanel') {
+          scheduleRenderProducts();
+        }
+      });
+  }
 
   function openEditProduct(id) {
     const p = state.products.find(x => x.id === id); 
@@ -1709,18 +1836,19 @@ function hideAllAuthForms() {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     const panel = $(view + 'Panel'); if (panel) panel.classList.add('active');
 
-    if (searchContainer && chipsEl) {
-        if (view === 'home') {
-            searchContainer.style.display = 'flex';
-            chipsEl.style.display = 'flex';
-        } else if (view === 'inventory') {
-            searchContainer.style.display = 'flex';
-            chipsEl.style.display = 'none';
-        } else {
-            searchContainer.style.display = 'none';
-            chipsEl.style.display = 'none';
-        }
+    // [FIX] Search Visibility Toggle
+    const isHome = view === 'home';
+    const isInv = view === 'inventory';
+    if (headerSearchInput) {
+        headerSearchInput.style.display = (isHome || isInv) ? 'block' : 'none';
+        // Clear search when switching tabs to avoid confusion
+        headerSearchInput.value = ''; 
     }
+    if (chipsEl) {
+        chipsEl.style.display = isHome ? 'flex' : 'none';
+    }
+    // Ensure old search container is completely hidden
+    if (searchContainer) searchContainer.style.display = 'none';
 
     if (view === 'reports') renderReports();
     if (view === 'settings') {
@@ -2126,23 +2254,23 @@ function hideAllAuthForms() {
       }
     } catch(e) { console.warn('Failed to init add-form enhancements', e); }
 
+    /* [FIX] Keyboard Focus Handling */
+    // Adds class to body when input is focused to hide bottom nav via CSS
     try {
-      const body = document.body;
-      function onViewportChange() {
-        try {
-          const vv = window.visualViewport;
-          const height = vv ? vv.height : window.innerHeight;
-          const viewportDiff = Math.abs(window.innerHeight - height);
-          const threshold = 150; 
-          body.classList.toggle('keyboard-open', viewportDiff > threshold);
-        } catch(e) { /* ignore */ }
-      }
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', onViewportChange);
-      } else {
-        window.addEventListener('resize', onViewportChange);
-      }
-      setTimeout(onViewportChange, 300);
+      document.addEventListener('focusin', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+          document.body.classList.add('keyboard-open');
+        }
+      });
+      
+      document.addEventListener('focusout', (e) => {
+        // Small delay to check if focus moved to another input
+        setTimeout(() => {
+          if (!document.activeElement || (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT')) {
+            document.body.classList.remove('keyboard-open');
+          }
+        }, 50);
+      });
     } catch(e) { console.warn('keyboard detection init failed', e); }
     
     hideAllAuthForms();
